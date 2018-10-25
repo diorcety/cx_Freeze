@@ -114,7 +114,7 @@ class build_ext(_build_ext):
             return fileName
         vars = distutils.sysconfig.get_config_vars()
         soExt = vars.get("EXT_SUFFIX", vars.get("SO"))
-        ext = self.compiler.exe_extension or ""
+        ext = (self.compiler.exe_extension or "") if self.compiler is not None else ""
         return fileName[:-len(soExt)] + ext
 
 

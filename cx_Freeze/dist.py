@@ -1,6 +1,6 @@
-import distutils.command.bdist_rpm
+import setuptools.command.bdist_rpm
+import setuptools.command.install
 import distutils.command.build
-import distutils.command.install
 import distutils.core
 import distutils.dir_util
 import distutils.dist
@@ -24,14 +24,14 @@ class Distribution(distutils.dist.Distribution):
         distutils.dist.Distribution.__init__(self, attrs)
 
 
-class bdist_rpm(distutils.command.bdist_rpm.bdist_rpm):
+class bdist_rpm(setuptools.command.bdist_rpm.bdist_rpm):
 
     def finalize_options(self):
-        distutils.command.bdist_rpm.bdist_rpm.finalize_options(self)
+        setuptools.command.bdist_rpm.bdist_rpm.finalize_options(self)
         self.use_rpm_opt_flags = 1
 
     def _make_spec_file(self):
-        contents = distutils.command.bdist_rpm.bdist_rpm._make_spec_file(self)
+        contents = setuptools.command.bdist_rpm.bdist_rpm._make_spec_file(self)
         contents.append('%define __prelink_undo_cmd %{nil}')
         return [c for c in contents if c != 'BuildArch: noarch']
 
@@ -231,34 +231,34 @@ class build_exe(distutils.core.Command):
                 setattr(self, attrName, sourceDir)
 
 
-class install(distutils.command.install.install):
-    user_options = distutils.command.install.install.user_options + [
+class install(setuptools.command.install.install):
+    user_options = setuptools.command.install.install.user_options + [
             ('install-exe=', None,
              'installation directory for executables')
     ]
 
     def expand_dirs(self):
-        distutils.command.install.install.expand_dirs(self)
+        setuptools.command.install.install.expand_dirs(self)
         self._expand_attrs(['install_exe'])
 
     def get_sub_commands(self):
-        subCommands = distutils.command.install.install.get_sub_commands(self)
+        subCommands = setuptools.command.install.install.get_sub_commands(self)
         if self.distribution.executables:
             subCommands.append("install_exe")
         return [s for s in subCommands if s != "install_egg_info"]
 
     def initialize_options(self):
-        distutils.command.install.install.initialize_options(self)
+        setuptools.command.install.install.initialize_options(self)
         self.install_exe = None
 
     def finalize_options(self):
-        distutils.command.install.install.finalize_options(self)
+        setuptools.command.install.install.finalize_options(self)
         self.convert_paths('exe')
         if self.root is not None:
             self.change_roots('exe')
 
     def select_scheme(self, name):
-        distutils.command.install.install.select_scheme(self, name)
+        setuptools.command.install.install.select_scheme(self, name)
         if self.install_exe is None:
             if sys.platform == "win32":
                 self.install_exe = '$base'
@@ -266,6 +266,15 @@ class install(distutils.command.install.install):
                 metadata = self.distribution.metadata
                 dirName = "%s-%s" % (metadata.name, metadata.version)
                 self.install_exe = '$base/lib/%s' % dirName
+
+    def run(self):
+        # A wheel without setuptools scripts is more cross-platform.
+        # Use the (undocumented) `no_ep` option to setuptools'
+        # install_scripts command to avoid creating entry point scripts.
+        install_scripts = self.reinitialize_command('install_scripts')
+        install_scripts.no_ep = True
+
+        setuptools.command.install.install.run(self)
 
 
 class install_exe(distutils.core.Command):

@@ -3,8 +3,6 @@ Distutils script for cx_Freeze.
 """
 
 import cx_Freeze
-import distutils.command.bdist_rpm
-import distutils.command.build_ext
 import distutils.command.install
 import distutils.command.install_data
 import distutils.sysconfig
@@ -13,35 +11,39 @@ import sys
 
 try:
     from setuptools import setup, Extension
+    from setuptools.command.bdist_rpm import bdist_rpm as _bdist_rpm
+    from setuptools.command.build_ext import build_ext as _build_ext
 except ImportError:
     from distutils.core import setup
     from distutils.extension import Extension
+    from distutils.command.bdist_rpm import bdist_rpm as _bdist_rpm
+    from distutils.command.build_ext import build_ext as _build_ext
 
 if sys.platform == "win32":
     import msilib
-    import distutils.command.bdist_msi
+    from distutils.command.bdist_msi import bdist_msi as _bdist_msi
 
-    class bdist_msi(distutils.command.bdist_msi.bdist_msi):
+    class bdist_msi(_bdist_msi):
 
         def add_scripts(self):
-            distutils.command.bdist_msi.bdist_msi.add_scripts(self)
+            _bdist_msi.add_scripts(self)
             msilib.add_data(self.db, "RemoveFile",
                     [("cxFreezeBatch", "cx_Freeze", "cxfreeze*.bat", "Scripts",
                         2)])
 
 
-class bdist_rpm(distutils.command.bdist_rpm.bdist_rpm):
+class bdist_rpm(_bdist_rpm):
 
     # rpm automatically byte compiles all Python files in a package but we
     # don't want that to happen for initscripts and samples so we tell it to
     # ignore those files
     def _make_spec_file(self):
-        specFile = distutils.command.bdist_rpm.bdist_rpm._make_spec_file(self)
+        specFile = _bdist_rpm._make_spec_file(self)
         specFile.insert(0, "%define _unpackaged_files_terminate_build 0%{nil}")
         return specFile
 
     def run(self):
-        distutils.command.bdist_rpm.bdist_rpm.run(self)
+        _bdist_rpm.run(self)
         specFile = os.path.join(self.rpm_base, "SPECS",
                 "%s.spec" % self.distribution.get_name())
         queryFormat = "%{name}-%{version}-%{release}.%{arch}.rpm"
@@ -54,11 +56,11 @@ class bdist_rpm(distutils.command.bdist_rpm.bdist_rpm):
                 os.path.join("dist", newFileName))
 
 
-class build_ext(distutils.command.build_ext.build_ext):
+class build_ext(_build_ext):
 
     def build_extension(self, ext):
         if "bases" not in ext.name:
-            distutils.command.build_ext.build_ext.build_extension(self, ext)
+            _build_ext.build_extension(self, ext)
             return
         if sys.platform == "win32" and self.compiler.compiler_type == "mingw32":
             ext.sources.append("source/bases/manifest.rc")
@@ -106,7 +108,7 @@ class build_ext(distutils.command.build_ext.build_ext):
                 debug = self.debug)
 
     def get_ext_filename(self, name):
-        fileName = distutils.command.build_ext.build_ext.get_ext_filename(self,
+        fileName = _build_ext.get_ext_filename(self,
                 name)
         if name.endswith("util"):
             return fileName

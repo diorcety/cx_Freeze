@@ -216,7 +216,14 @@ class build_exe(distutils.core.Command):
                 metadata = metadata,
                 zipIncludePackages = self.zip_include_packages,
                 zipExcludePackages = self.zip_exclude_packages)
-        freezer.Freeze()
+        if sys.platform == "darwin":
+            chflags_sav = os.chflags
+            os.chflags = lambda x, y: None
+        try:
+            freezer.Freeze()
+        finally:
+            if sys.platform == "darwin":
+                os.chflags = chflags_sav
 
     def set_source_location(self, name, *pathParts):
         envName = "%s_BASE" % name.upper()

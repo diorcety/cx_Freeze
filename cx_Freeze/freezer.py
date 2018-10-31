@@ -16,6 +16,7 @@ import struct
 import sys
 import time
 import zipfile
+import itertools
 
 import cx_Freeze
 
@@ -176,6 +177,7 @@ class Freezer(object):
         normalizedSource = os.path.normcase(os.path.normpath(source))
         normalizedTarget = os.path.normcase(os.path.normpath(target))
         if normalizedTarget in self.filesCopied:
+            self.filesCopied[normalizedTarget].append(normalizedSource)
             return
         if normalizedSource == normalizedTarget:
             return
@@ -188,11 +190,11 @@ class Freezer(object):
         shutil.copystat(source, target)
         if includeMode:
             shutil.copymode(source, target)
-        self.filesCopied[normalizedTarget] = None
+        self.filesCopied[normalizedTarget] = [normalizedSource]
         if copyDependentFiles \
                 and source not in self.finder.excludeDependentFiles:
             for source in self._GetDependentFiles(source):
-                target = os.path.join(targetDir, os.path.basename(source))
+                target = os.path.join(self.targetDir, os.path.basename(source))
                 self._CopyFile(source, target, copyDependentFiles)
 
     def _CreateDirectory(self, path):
@@ -391,6 +393,32 @@ class Freezer(object):
             os.chmod(path, stat.S_IWRITE)
             os.remove(path)
 
+    def _CopyTree(self, src, dst, symlinks = False, ignore = None):
+        if not os.path.exists(dst):
+            os.makedirs(dst)
+            shutil.copystat(src, dst)
+        lst = os.listdir(src)
+        if ignore:
+            excl = ignore(src, lst)
+            lst = [x for x in lst if x not in excl]
+        for item in lst:
+            s = os.path.join(src, item)
+            d = os.path.join(dst, item)
+            if symlinks and os.path.islink(s):
+                if os.path.lexists(d):
+                    os.remove(d)
+                os.symlink(os.readlink(s), d)
+                try:
+                    st = os.lstat(s)
+                    mode = stat.S_IMODE(st.st_mode)
+                    os.lchmod(d, mode)
+                except:
+                    pass # lchmod not available
+            elif os.path.isdir(s):
+                self._CopyTree(s, d, symlinks, ignore)
+            else:
+                shutil.copy2(s, d)
+
     def _RemoveVersionNumbers(self, libName):
         tweaked = False
         parts = libName.split(".")
@@ -508,30 +536,13 @@ class Freezer(object):
 
         filesToCopy = []
         magic = imp.get_magic()
-        ignorePatterns = shutil.ignore_patterns("*.py", "*.pyc", "*.pyo",
-                "__pycache__")
         for module in modules:
-
             # determine if the module should be written to the file system;
             # a number of packages make the assumption that files that they
             # require will be found in a location relative to where
             # they are located on disk; these packages will fail with strange
             # errors when they are written to a zip file instead
             includeInFileSystem = self._ShouldIncludeInFileSystem(module)
-
-            # if the module refers to a package, check to see if this package
-            # should be included in the zip file or should be written to the
-            # file system; if the package should be written to the file system,
-            # any non-Python files are copied at this point if the target
-            # directory does not already exist
-            if module.path is not None and includeInFileSystem:
-                parts = module.name.split(".")
-                targetPackageDir = os.path.join(targetDir, *parts)
-                sourcePackageDir = os.path.dirname(module.file)
-                if not os.path.exists(targetPackageDir):
-                    print("Copying data from package", module.name + "...")
-                    shutil.copytree(sourcePackageDir, targetPackageDir,
-                            ignore = ignorePatterns)
 
             # if an extension module is found in a package that is to be
             # included in a zip file, save a Python loader in the zip file and
@@ -577,6 +588,7 @@ class Freezer(object):
                     if module.path is not None:
                         parts.append("__init__")
                     targetName = os.path.join(targetDir, *parts) + ".pyc"
+                    self._CreateDirectory(os.path.dirname(targetName))
                     open(targetName, "wb").write(data)
 
 
@@ -590,6 +602,35 @@ class Freezer(object):
                 if self.compress:
                     zinfo.compress_type = zipfile.ZIP_DEFLATED
                 outFile.writestr(zinfo, data)
+
+        ignorePatterns = shutil.ignore_patterns("*.py", "*.pyc", "*.pyo", #"*.dll", "*.so*", "*.dylib*",
+                "__pycache__")
+        copiedFiles = list(itertools.chain.from_iterable(self.filesCopied.values()))
+        def ignoreFunction(src, names):
+            ret = ignorePatterns(src, names)
+            ret = ret.union([name for name in names if os.path.join(src, name) in copiedFiles])
+            return ret
+
+        for module in modules:
+            # determine if the module should be written to the file system;
+            # a number of packages make the assumption that files that they
+            # require will be found in a location relative to where
+            # they are located on disk; these packages will fail with strange
+            # errors when they are written to a zip file instead
+            includeInFileSystem = self._ShouldIncludeInFileSystem(module)
+
+            # if the module refers to a package, check to see if this package
+            # should be included in the zip file or should be written to the
+            # file system; if the package should be written to the file system,
+            # any non-Python files are copied at this point if the target
+            # directory does not already exist
+            if module.path is not None and includeInFileSystem:
+                parts = module.name.split(".")
+                targetPackageDir = os.path.join(targetDir, *parts)
+                sourcePackageDir = os.path.dirname(module.file)
+                print("Copying data from package", module.name + "...")
+                self._CopyTree(sourcePackageDir, targetPackageDir,
+                            ignore = ignoreFunction)
 
         # write any files to the zip file that were requested specially
         for sourceFileName, targetFileName in self.zipIncludes:

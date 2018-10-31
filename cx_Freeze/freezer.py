@@ -17,6 +17,7 @@ import sys
 import time
 import zipfile
 import itertools
+import subprocess
 
 import cx_Freeze
 
@@ -181,6 +182,7 @@ class Freezer(object):
             return
         if normalizedSource == normalizedTarget:
             return
+        sourceDir = os.path.dirname(source)
         self._RemoveFile(target)
         targetDir = os.path.dirname(target)
         self._CreateDirectory(targetDir)
@@ -193,9 +195,14 @@ class Freezer(object):
         self.filesCopied[normalizedTarget] = [normalizedSource]
         if copyDependentFiles \
                 and source not in self.finder.excludeDependentFiles:
+            target_file = target
             for source in self._GetDependentFiles(source):
                 target = os.path.join(self.targetDir, os.path.basename(source))
                 self._CopyFile(source, target, copyDependentFiles)
+                if sys.platform == "darwin":
+                    oldReference = os.path.join("@loader_path", os.path.relpath(source, sourceDir))
+                    newReference = os.path.join("@loader_path", os.path.relpath(target, targetDir))
+                    subprocess.call(('install_name_tool', '-change', oldReference, newReference, target_file))
 
     def _CreateDirectory(self, path):
         if not os.path.isdir(path):

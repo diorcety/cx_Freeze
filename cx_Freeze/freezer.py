@@ -136,6 +136,7 @@ class Freezer(object):
         self.path = path
         self.includeMSVCR = includeMSVCR
         self.targetDir = targetDir
+        self.currentModule = None
         self.binIncludes = [os.path.normcase(n) \
                 for n in self._GetDefaultBinIncludes() + binIncludes]
         self.binExcludes = [os.path.normcase(n) \
@@ -291,12 +292,35 @@ class Freezer(object):
                         os.pathsep.join(sys.path)
                 import cx_Freeze.util
                 try:
-                    dependentFiles = cx_Freeze.util.GetDependentFiles(path)
+                    _dependentFiles = cx_Freeze.util.GetDependentFiles(path)
                 except cx_Freeze.util.BindError:
                     # Sometimes this gets called when path is not actually a library
                     # See issue 88
-                    dependentFiles = []
+                    _dependentFiles = []
                 os.environ["PATH"] = origPath
+
+                dependentFiles = []
+                for fileName in _dependentFiles:
+                    realFileName = None
+                    if os.path.isfile(fileName):
+                        realFileName = fileName
+
+                    if realFileName is None:
+                        # Look the dll in main module tree
+                        parentModule = self.currentModule
+                        while parentModule.parent is not None:
+                            parentModule = parentModule.parent
+                        for path in parentModule.path:
+                            for root, dirs, files in os.walk(os.path.dirname(path)):
+                                for name in files:
+                                    if name == fileName:
+                                        realFileName = os.path.abspath(os.path.join(root, name))
+                                        break
+                    if realFileName is not None:
+                        dependentFiles.append(realFileName)
+                    else:
+                        message = "WARNING: cannot find %s\n" % fileName
+                        sys.stdout.write(message)
             else:
                 dependentFiles = []
                 if sys.platform == "darwin":
@@ -544,6 +568,7 @@ class Freezer(object):
         filesToCopy = []
         magic = imp.get_magic()
         for module in modules:
+            self.currentModule = module
             # determine if the module should be written to the file system;
             # a number of packages make the assumption that files that they
             # require will be found in a location relative to where
@@ -609,7 +634,7 @@ class Freezer(object):
                 if self.compress:
                     zinfo.compress_type = zipfile.ZIP_DEFLATED
                 outFile.writestr(zinfo, data)
-
+        self.currentModule = None
         ignorePatterns = shutil.ignore_patterns("*.py", "*.pyc", "*.pyo", #"*.dll", "*.so*", "*.dylib*",
                 "__pycache__")
         copiedFiles = list(itertools.chain.from_iterable(self.filesCopied.values()))
@@ -619,6 +644,7 @@ class Freezer(object):
             return ret
 
         for module in modules:
+            self.currentModule
             # determine if the module should be written to the file system;
             # a number of packages make the assumption that files that they
             # require will be found in a location relative to where
@@ -638,7 +664,7 @@ class Freezer(object):
                 print("Copying data from package", module.name + "...")
                 self._CopyTree(sourcePackageDir, targetPackageDir,
                             ignore = ignoreFunction)
-
+        self.currentModule = None
         # write any files to the zip file that were requested specially
         for sourceFileName, targetFileName in self.zipIncludes:
             outFile.write(sourceFileName, targetFileName)
@@ -648,6 +674,7 @@ class Freezer(object):
         # Copy Python extension modules from the list built above.
         origPath = os.environ["PATH"]
         for module, target in filesToCopy:
+            self.currentModule = module
             try:
                 if module.parent is not None:
                     path = os.pathsep.join([origPath] + module.parent.path)
@@ -655,6 +682,7 @@ class Freezer(object):
                 self._CopyFile(module.file, target, copyDependentFiles = True)
             finally:
                 os.environ["PATH"] = origPath
+        self.currentModule = None
 
     def Freeze(self):
         self.finder = None

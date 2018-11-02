@@ -81,6 +81,11 @@ static BOOL __stdcall BindStatusRoutine(
     char fileName[MAX_PATH + 1];
 
     switch (reason) {
+        case BindImportModuleFailed:
+            Py_INCREF(Py_None);
+            if (PyDict_SetItemString(g_ImageNames, dllName, Py_None) < 0)
+                return FALSE;
+            break;
         case BindImportModule:
             strcpy(imagePath, imageName);
             PathRemoveFileSpec(imagePath);

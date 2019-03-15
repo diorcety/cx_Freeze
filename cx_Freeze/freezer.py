@@ -610,10 +610,17 @@ class Freezer(object):
             # if the module should be written to the file system, do so
             if includeInFileSystem:
                 parts = module.name.split(".")
+                old = parts[-1]
+                parts.pop()
+                if module.path is not None:
+                    new = os.path.basename(module.path[0])
+                else:
+                    new = os.path.splitext(os.path.basename(module.file))[0]
+                if old.lower() != new.lower():
+                    new = old
+                parts.append(new)
                 if module.code is None:
-                    parts.pop()
-                    parts.append(os.path.basename(module.file))
-                    targetName = os.path.join(targetDir, *parts)
+                    targetName = os.path.join(targetDir, *parts) + os.path.splitext(os.path.basename(module.file))[1]
                     self._CopyFile(module.file, targetName,
                             copyDependentFiles = True)
                 else:

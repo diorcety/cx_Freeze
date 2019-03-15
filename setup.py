@@ -204,6 +204,12 @@ classifiers = [
         "Topic :: Utilities"
 ]
 
+install_requires = [
+]
+
+if sys.version_info < (3, 4):
+    install_requires.append('pathlib2')
+
 setup(name = "cx_Freeze",
         description = "create standalone executables from Python scripts",
         long_description = "create standalone executables from Python scripts",
@@ -219,5 +225,7 @@ setup(name = "cx_Freeze",
         classifiers = classifiers,
         keywords = "freeze",
         license = "Python Software Foundation License",
-        package_data = {"cx_Freeze" : packageData })
+        package_data = {"cx_Freeze" : packageData },
+        install_requires = install_requires,
+)
 

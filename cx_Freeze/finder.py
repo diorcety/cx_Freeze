@@ -13,6 +13,7 @@ import re
 import sys
 import types
 import zipfile
+import pathlib
 
 import cx_Freeze.hooks
 
@@ -213,7 +214,8 @@ class ModuleFinder(object):
     def _FindModule(self, name, path, namespace):
         try:
             # imp loads normal modules from the filesystem
-            return imp.find_module(name, path)
+            a, b, c = imp.find_module(name, path)
+            return a, str(pathlib.Path(b).resolve()), c
         except ImportError:
             if namespace and name in sys.modules:
                 # Namespace package (?)

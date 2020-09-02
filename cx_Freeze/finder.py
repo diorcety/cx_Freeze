@@ -233,6 +233,10 @@ class ModuleFinder(object):
                 if res is not None:
                     return res
             raise
+        expect OSError as e:
+            if e.errno == 2:
+                raise ImportError
+            raise
 
     def _GetParentByName(self, name):
         """Return the parent module given the name of a module."""
